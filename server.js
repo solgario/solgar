@@ -426,7 +426,7 @@ b{color:#ffd23f;} i{color:#7d93ad;} p{color:#9fb4c9;font-size:12px;} section{bor
 const INDEX = path.join(__dirname, 'index.html');
 const server = http.createServer((req,res)=>{
   const f = (req.url||'/').split('?')[0];
-  if(f==='/stats'){ res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'}); res.end(JSON.stringify({humans:realCount(), spectators:spectators.size, total:players.size})); return; }
+  if(f==='/stats'){ res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'}); res.end(JSON.stringify({humans:realCount(), spectators:spectators.size, total:players.size, gated:GATE_ON, min:MIN_HOLD})); return; }
   if(f==='/payouts'){
     let key='', pool=0; try{ const u=new URL(req.url,'http://x'); key=u.searchParams.get('key')||''; pool=parseFloat(u.searchParams.get('pool')||'0')||0; }catch(_){}
     if(!ADMIN_KEY){ res.writeHead(403,{'Content-Type':'text/plain'}); res.end('Set an ADMIN_KEY env var to enable the payout page.'); return; }

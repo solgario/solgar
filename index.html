@@ -293,6 +293,7 @@
   const Cnet=new Map();
   let netFood=[], netVir=[], netLb=[], netRsec=0, netRnum=1, netPop=20, netHumans=0;
   let walletPub=null, walletSig=null, walletTs=0;   // Solana wallet proof for the token gate
+  let gateOn=false, gateMin=250000;                 // learned from /stats: is the 250k gate enforced?
 
   const rand=(a,b)=>a+Math.random()*(b-a);
   const radiusOf=m=>Math.sqrt(m)*4.0;
@@ -368,7 +369,8 @@
   }
   async function pollStats(){
     try{ const r=await fetch('/stats',{cache:'no-store'}); const j=await r.json();
-      $('onlineMenu').textContent=`${j.humans} playing${j.spectators?` · ${j.spectators} watching`:''} live`;
+      gateOn = !!j.gated; if(j.min) gateMin = j.min;
+      $('onlineMenu').textContent=`${j.humans} playing${j.spectators?` · ${j.spectators} watching`:''} live${gateOn?' · 🔒 gated':''}`;
       $('onlineDot').style.color = j.humans>0 ? 'var(--green)' : 'var(--muted)';
     }catch(e){ $('onlineMenu').textContent='offline — deploy for live play (practice works now)'; $('onlineDot').style.color='var(--dim)'; }
   }
@@ -643,17 +645,27 @@
   function go(spec){
     initAudio();
     myName=($('name').value||'you').trim().slice(0,14)||'you';
+    if(!spec && gateOn && !walletPub){   // gate is ON and they're trying to PLAY without a connected wallet
+      const gm = `🔒 Connect a wallet holding ${gateMin.toLocaleString()} $SOLGAR to play. Spectating is free.`;
+      if(mode==='ospec'||mode==='sspec') toMenu(gm); else setStatus(gm, true);  // spectators → back to menu to connect
+      return;
+    }
     decided=false; clearTimeout(connTimer);
     if(ws){ ws.onmessage=null; ws.onclose=null; try{ws.close();}catch(_){} ws=null; }
-    if(!location.host){ fallbackSolo(spec); return; }            // file:// — no server reachable
+    if(!location.host){ gatedFail(spec); return; }               // file:// — no server reachable
     setStatus('connecting to server…');
     try{ ws=new WebSocket((location.protocol==='https:'?'wss':'ws')+'://'+location.host); }
-    catch(e){ fallbackSolo(spec); return; }
-    connTimer=setTimeout(()=>{ if(!decided){ if(ws){ws.onmessage=null;ws.onclose=null; try{ws.close();}catch(_){}} fallbackSolo(spec); } }, 2600);
+    catch(e){ gatedFail(spec); return; }
+    connTimer=setTimeout(()=>{ if(!decided){ if(ws){ws.onmessage=null;ws.onclose=null; try{ws.close();}catch(_){}} gatedFail(spec); } }, 2600);
     ws.onopen=()=>{ sendWS(spec ? {t:'spectate'} : {t:'join',name:myName,color:selectedSkin,wallet:walletPub,sig:walletSig,ts:walletTs}); };
     ws.onmessage=onNetMsg;
-    ws.onclose=()=>{ if(!decided){ fallbackSolo(spec); } else if(mode==='online'||mode==='ospec'){ toMenu('connection lost — back to menu'); } };
+    ws.onclose=()=>{ if(!decided){ gatedFail(spec); } else if(mode==='online'||mode==='ospec'){ toMenu('connection lost — back to menu'); } };
     ws.onerror=()=>{};
+  }
+  // when the gate is ON and you were trying to PLAY, don't silently drop into offline practice — that would look like bypassing the gate
+  function gatedFail(spec){
+    if(!spec && gateOn){ setStatus('Could not reach the game server — try again in a moment.', true); return; }
+    fallbackSolo(spec);
   }
   function fallbackSolo(spec){ decided=true; clearTimeout(connTimer); ws=null; setStatus(''); startSolo(spec); }
   function onNetMsg(ev){ let m; try{m=JSON.parse(ev.data);}catch(e){return;}
